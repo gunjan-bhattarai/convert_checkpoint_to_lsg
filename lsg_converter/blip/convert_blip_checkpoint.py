@@ -1,8 +1,9 @@
 from logging import warn
-from transformers.models.bert.modeling_bert import *
 import torch
 import torch.nn as nn
-from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.blip.configuration_blip import BlipConfig, BlipTextConfig, BlipVisionConfig
+from transformers.models.blip.modeling_blip_text import *
+from transformers.models.blip.modeling_blip import *
 import sys
 
 AUTO_MAP = {
@@ -16,14 +17,30 @@ AUTO_MAP = {
         "AutoModelForTokenClassification": "modeling_lsg_bert.LSGBertForTokenClassification"
     }
 
-class LSGBlipConfig(BertConfig):
+class LSGBlipConfig(BlipConfig):
     """
     This class overrides :class:`~transformers.BlipConfig`. Please check the superclass for the appropriate
     documentation alongside usage examples.
     """
 
+    def __init__(
+        self,
+        **kwargs
+        ):
+        """Constructs LSGBlipConfig."""
+        super().__init__(**kwargs)
+        
+        self.text_config = BlipTextConfig(**text_config)
+        self.text_config.encoder_hidden_size = self.vision_config.hidden_size
+
+class LSGBlipTextConfig(BertTextConfig):
+    """
+    This class overrides :class:`~transformers.BlipTextConfig`. Please check the superclass for the appropriate
+    documentation alongside usage examples.
+    """
+
     base_model_prefix = "lsg"
-    model_type = "blip"
+    model_type = "blip_text_model"
 
     def __init__(
         self,
@@ -39,7 +56,7 @@ class LSGBlipConfig(BertConfig):
         sparsity_type="norm",
         **kwargs
         ):
-        """Constructs LSGBlipConfig."""
+        """Constructs LSGBlipTextConfig."""
         super().__init__(**kwargs)
 
         self.adaptive = adaptive
@@ -977,7 +994,7 @@ class LSGBlipTextModel(LSGBlipPreTrainedModel, BlipTextPreTrainedModel):
     documentation alongside usage examples.
     """
 
-    config_class = LSGBertConfig
+    config_class = LSGBlipConfig
 
     def __init__(self, config, add_pooling_layer=True):
         
@@ -1086,7 +1103,6 @@ class LSGBertForNextSentencePrediction(LSGBertPreTrainedModel, BertForNextSenten
         # Initialize weights and apply final processing
         self.post_init()
 
-
 class LSGBertForSequenceClassification(LSGBertPreTrainedModel, BertForSequenceClassification):
     """
     This class overrides :class:`~transformers.BertForSequenceClassification`. Please check the superclass for the
@@ -1161,24 +1177,21 @@ class LSGBertForTokenClassification(LSGBertPreTrainedModel, BertForTokenClassifi
         # Initialize weights and apply final processing
         self.post_init()
 
-
-class LSGBertForQuestionAnswering(LSGBertPreTrainedModel, BertForQuestionAnswering):
-    """
-    This class overrides :class:`~transformers.BertForQuestionAnswering`. Please check the superclass for the
-    appropriate documentation alongside usage examples.
-    """
-
-    config_class = LSGBertConfig
-    _keys_to_ignore_on_load_unexpected = [r"pooler"]
+class LSGBlipForQuestionAnswering(LSGBlipPreTrainedModel, BlipForQuestionAnswering):
+    config_class = LSGBlipConfig
+    _keys_to_ignore_on_load_missing = [r"text_decoder.cls.predictions.decoder.bias"]
 
     def __init__(self, config):
-        
-        LSGBertPreTrainedModel.__init__(self, config)
+        LSGBlipPreTrainedModel.__init__(config)
 
-        self.num_labels = config.num_labels
+        self.vision_model = BlipVisionModel(config.vision_config)
 
-        self.bert = LSGBertModel(config, add_pooling_layer=False)
-        self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
+        self.text_encoder = LSGBlipTextModel(config.text_config, add_pooling_layer=False)
+
+        self.text_decoder = LSGBlipTextLMHeadModel(config.text_config)
+
+        self.decoder_pad_token_id = config.text_config.pad_token_id
+        self.decoder_start_token_id = config.text_config.bos_token_id
 
         # Initialize weights and apply final processing
         self.post_init()
