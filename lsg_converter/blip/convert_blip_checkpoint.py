@@ -8,11 +8,12 @@ import sys
 
 AUTO_MAP = {
         "AutoModel": "modeling_lsg_bert.LSGBlipModel",
-        "AutoModelForCausalLM": "modeling_lsg_bert.LSGBlipLMHeadModel",
+        "AutoModelForCausalLM": "modeling_lsg_bert.LSGBertLMHeadModel",
         "AutoModelForMaskedLM": "modeling_lsg_bert.LSGBertForMaskedLM",
         "AutoModelForPreTraining": "modeling_lsg_bert.LSGBertForPreTraining",
         "AutoModelForMultipleChoice": "modeling_lsg_bert.LSGBertForMultipleChoice",
-        "AutoModelForQuestionAnswering": "modeling_lsg_bert.LSGBertForQuestionAnswering",
+        "AutoModelForQuestionAnswering": "modeling_lsg_blip.LSGBlipForQuestionAnswering",
+        "AutoModelForSeq2SeqLM": "modeling_lsg_bert.LSGBlipForConditionalGeneration"
         "AutoModelForSequenceClassification": "modeling_lsg_bert.LSGBertForSequenceClassification",
         "AutoModelForTokenClassification": "modeling_lsg_bert.LSGBertForTokenClassification"
     }
@@ -1173,6 +1174,61 @@ class LSGBertForTokenClassification(LSGBertPreTrainedModel, BertForTokenClassifi
         )
         self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+class LSGBlipForConditionalGeneration(LSGBlipPreTrainedModel, BlipForConditionalGeneration):
+    config_class = LSGBlipConfig
+    _keys_to_ignore_on_load_missing = [r"text_decoder.cls.predictions.decoder.bias"]
+    main_input_name = "pixel_values"
+
+    def __init__(self, config):
+        LSGBlipPreTrainedModel.__init__(config)
+
+        self.vision_model = BlipVisionModel(config.vision_config)
+
+        self.text_decoder = LSGBlipTextLMHeadModel(config.text_config)
+
+        self.decoder_input_ids = config.text_config.bos_token_id
+        self.decoder_pad_token_id = config.text_config.pad_token_id
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+class LSGBlipForImageTextRetrieval(LSGBlipPreTrainedModel, BlipForImageTextRetrieval):
+    config_class = LSGBlipConfig
+
+    def __init__(self, config):
+        LSGBlipPreTrainedModel.__init__(config)
+
+        self.vision_model = BlipVisionModel(config.vision_config)
+
+        self.text_encoder = LSGBlipTextModel(config.text_config, add_pooling_layer=False)
+
+        # vision projection layer
+        self.vision_proj = nn.Linear(config.vision_config.hidden_size, config.image_text_hidden_size)
+
+        # text projection layer
+        self.text_proj = nn.Linear(config.text_config.hidden_size, config.image_text_hidden_size)
+
+        # image text matching head
+        if config.num_labels:
+            self.num_labels = config.num_labels
+        else:
+            self.num_labels = 2
+        self.itm_head = nn.Linear(config.text_config.hidden_size, self.num_labels)
+
+        self.decoder_pad_token_id = (
+            config.text_config.pad_token_id
+            if not hasattr(config, "decoder_pad_token_id")
+            else config.decoder_pad_token_id
+        )
+        self.decoder_start_token_id = (
+            config.text_config.bos_token_id
+            if not hasattr(config, "decoder_start_token_id")
+            else config.decoder_start_token_id
+        )
 
         # Initialize weights and apply final processing
         self.post_init()
