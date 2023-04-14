@@ -34,7 +34,7 @@ class LSGBlipConfig(BlipConfig):
         self.text_config = BlipTextConfig(**text_config)
         self.text_config.encoder_hidden_size = self.vision_config.hidden_size
 
-class LSGBlipTextConfig(BertTextConfig):
+class LSGBlipTextConfig(BlipTextConfig):
     """
     This class overrides :class:`~transformers.BlipTextConfig`. Please check the superclass for the appropriate
     documentation alongside usage examples.
@@ -1258,7 +1258,7 @@ def str_to_class(classname):
 
 # Register model in Auto API
 try:
-    LSGBertConfig.register_for_auto_class()
+    LSGBlipConfig.register_for_auto_class()
     for key, value in AUTO_MAP.items():
         str_to_class(value.split(".")[-1]).register_for_auto_class(key)
 except:
