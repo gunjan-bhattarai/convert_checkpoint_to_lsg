@@ -976,6 +976,16 @@ class LSGBlipEncoder(BlipEncoder):
         encoder_outputs.last_hidden_state = sequence_output 
         return encoder_outputs
 
+class LSGBlipTextPreTrainedModel(BlipTextPreTrainedModel):
+    """
+    An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
+    models.
+    """
+
+    config_class = LSGBlipTextConfig
+    base_model_prefix = "lsg"
+    _keys_to_ignore_on_load_missing = [r"position_ids"]
+
 class LSGBlipPreTrainedModel(BlipPreTrainedModel):
     """
     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
@@ -1032,6 +1042,41 @@ class LSGBlipTextModel(LSGBlipPreTrainedModel, BlipTextPreTrainedModel):
 
         return extended_attention_mask
 
+class LSGBlipModel(LSGBlipPreTrainedModel, BlipModel):
+    config_class = LSGBlipConfig
+
+    def __init__(self, config: BlipConfig):
+        LSGBlipPreTrainedModel.__init__(config)
+
+        if not isinstance(config.text_config, BlipTextConfig):
+            raise ValueError(
+                "config.text_config is expected to be of type BlipTextConfig but is of type"
+                f" {type(config.text_config)}."
+            )
+
+        if not isinstance(config.vision_config, BlipVisionConfig):
+            raise ValueError(
+                "config.vision_config is expected to be of type BlipVisionConfig but is of type"
+                f" {type(config.vision_config)}."
+            )
+
+        text_config = config.text_config
+        vision_config = config.vision_config
+
+        self.projection_dim = config.projection_dim
+        self.text_embed_dim = text_config.hidden_size
+        self.vision_embed_dim = vision_config.hidden_size
+
+        self.text_model = BlipTextModel(text_config)
+        self.vision_model = BlipVisionModel(vision_config)
+
+        self.visual_projection = nn.Linear(self.vision_embed_dim, self.projection_dim, bias=False)
+        self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False)
+        self.logit_scale = nn.Parameter(torch.ones([]) * self.config.logit_scale_init_value)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
 
 class LSGBertForPreTraining(LSGBertPreTrainedModel, BertForPreTraining):
 
@@ -1046,7 +1091,7 @@ class LSGBertForPreTraining(LSGBertPreTrainedModel, BertForPreTraining):
         self.post_init()
 
 
-class LSGBlipLMHeadModel(LSGBlipPreTrainedModel, BlipTextLMHeadModel):
+class LSGBlipLMHeadModel(LSGBlipTextPreTrainedModel, BlipTextLMHeadModel):
 
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
     _keys_to_ignore_on_load_missing = [r"position_ids", r"predictions.decoder.bias"]
